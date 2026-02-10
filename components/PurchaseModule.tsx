@@ -63,19 +63,24 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ purchases, refresh }) =
       addToast('সংশোধন হয়েছে!', 'success');
     } else {
       // সরাসরি কল করুন
-   const result = await DataService.addPurchase(purchaseData) as Purchase; // 'as Purchase' যোগ করুন
+const result = await DataService.addPurchase(purchaseData);
 
-if (result && !formData.isCredit) {
+if (result) {
+  // যদি চেকবক্স সিলেক্ট করা না থাকে (অর্থাৎ নগদ ক্রয়), তবেই ক্যাশ লগে যাবে
+  if (!formData.isCredit) {
     await DataService.addCashLog({
-        type: 'WITHDRAW',
-        amount: total,
-        date: formData.date,
-        note: `মাল ক্রয়: ${formData.type} [ref:purchase:${result.id}]`
+      type: 'WITHDRAW',
+      amount: total,
+      date: formData.date,
+      // রেফারেন্স আইডি যোগ করা হয়েছে যাতে পরে ডিলিট করা যায়
+      note: `মাল ক্রয়: ${formData.type} [ref:purchase:${result.id}]`
     });
-        addToast('ক্রয় রেকর্ড সংরক্ষিত এবং ক্যাশ থেকে বিয়োগ হয়েছে!', 'success');
-      } else {
-        addToast('বাকিতে ক্রয় রেকর্ড সংরক্ষিত হয়েছে!', 'success');
-      }
+    addToast('ক্রয় রেকর্ড সংরক্ষিত এবং ক্যাশ থেকে বিয়োগ হয়েছে!', 'success');
+  } else {
+    // যদি বাকিতে কেনা হয়
+    addToast('বাকিতে ক্রয় রেকর্ড সংরক্ষিত হয়েছে!', 'success');
+  }
+}
     }
     setFormData(initialFormState);
     refresh();
