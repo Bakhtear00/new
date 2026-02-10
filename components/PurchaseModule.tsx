@@ -6,6 +6,7 @@ import { Purchase } from '../types';
 import HoldToDeleteButton from './HoldToDeleteButton';
 import { useToast } from '../contexts/ToastContext';
 
+
 // FIX: Removed useData hook and accept props from parent component.
 interface PurchaseModuleProps {
   purchases: Purchase[];
