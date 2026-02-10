@@ -6,7 +6,6 @@ import { Purchase } from '../types';
 import HoldToDeleteButton from './HoldToDeleteButton';
 import { useToast } from '../contexts/ToastContext';
 
-
 // FIX: Removed useData hook and accept props from parent component.
 interface PurchaseModuleProps {
   purchases: Purchase[];
@@ -64,15 +63,15 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ purchases, refresh }) =
       addToast('সংশোধন হয়েছে!', 'success');
     } else {
       // সরাসরি কল করুন
-      await DataService.addPurchase(purchaseData);
-      
-      if (!formData.isCredit) {
-        await DataService.addCashLog({
-          type: 'WITHDRAW',
-          amount: total,
-          date: formData.date,
-          note: `মাল ক্রয়: ${formData.type}`
-        });
+   const result = await DataService.addPurchase(purchaseData) as Purchase; // 'as Purchase' যোগ করুন
+
+if (result && !formData.isCredit) {
+    await DataService.addCashLog({
+        type: 'WITHDRAW',
+        amount: total,
+        date: formData.date,
+        note: `মাল ক্রয়: ${formData.type} [ref:purchase:${result.id}]`
+    });
         addToast('ক্রয় রেকর্ড সংরক্ষিত এবং ক্যাশ থেকে বিয়োগ হয়েছে!', 'success');
       } else {
         addToast('বাকিতে ক্রয় রেকর্ড সংরক্ষিত হয়েছে!', 'success');
@@ -121,19 +120,26 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ purchases, refresh }) =
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   
-  const handleDelete = async (id: string) => {
-    try {
-      await DataService.deletePurchase(id);
-      addToast('ক্রয় হিসাব সফলভাবে মোছা হয়েছে!', 'success');
-      if (editingId === id) {
-        setEditingId(null);
-        setFormData(initialFormState);
-      }
-      refresh();
-    } catch (error) {
-      console.error("Failed to delete purchase:", error);
+const handleDelete = async (id: string) => {
+  try {
+    // ১. প্রথমে পারচেজ ডাটা ডিলিট করুন
+    await DataService.deletePurchase(id);
+
+    // ২. ক্যাশ লগ থেকে ওই পারচেজের এন্ট্রিটি মুছে ফেলুন (রেফারেন্স ধরে)
+    await DataService.deleteCashLogByReference(`[ref:purchase:${id}]`);
+
+    addToast('ক্রয় এবং ক্যাশ রেকর্ড মুছে ফেলা হয়েছে!', 'success');
+    
+    if (editingId === id) {
+      setEditingId(null);
+      setFormData(initialFormState);
     }
-  };
+    refresh();
+  } catch (error) {
+    console.error("Failed to delete purchase:", error);
+    addToast('মুছতে সমস্যা হয়েছে!', 'error');
+  }
+};
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
