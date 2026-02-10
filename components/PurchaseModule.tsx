@@ -16,6 +16,7 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ purchases, refresh }) =
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterDate, setFilterDate] = useState('');
   const { addToast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const initialFormState = {
     type: POULTRY_TYPES[0],
@@ -29,55 +30,65 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ purchases, refresh }) =
 
   const total = (Number(formData.kg) || 0) * (Number(formData.rate) || 0);
 
+ 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.pieces || !formData.kg || !formData.rate) {
-      addToast('সবগুলো ঘর পূরণ করুন!', 'error');
-      return;
-    }
+  e.preventDefault();
 
-    const purchaseData = {
-      type: formData.type,
-      pieces: Number(formData.pieces),
-      kg: Number(formData.kg),
-      rate: Number(formData.rate),
-      total: total,
-     date: formData.date,
-     is_credit: formData.isCredit,
-    created_at: new Date().toISOString() // এখানেও আন্ডারস্কোর (_) ব্যবহার করুন
-    };
-    
+  // ১. ডুপ্লিকেট ক্লিক আটকানো
+  if (isSubmitting) return;
 
-    try {
-      if (editingId) {
-        await DataService.updatePurchase(purchaseData, editingId);
-        setEditingId(null);
-        addToast('সংশোধন হয়েছে!', 'success');
-     
-        // ৫৩ নম্বর লাইন থেকে রিপ্লেস করুন
-} else {
-    // সরাসরি কল করুন, কারণ এটি কিছু রিটার্ন করে না
-    await DataService.addPurchase(purchaseData);
-    
-    if (!formData.isCredit) {
-        await DataService.addCashLog({
-            type: 'WITHDRAW',
-            amount: total,
-            date: formData.date,
-            note: `মাল ক্রয়: ${formData.type}` // এখানে .id এর দরকার নেই
-        });
-        addToast('ক্রয় রেকর্ড সংরক্ষিত এবং ক্যাশ থেকে বিয়োগ হয়েছে!', 'success');
-    } else {
-        addToast('বাকিতে ক্রয় রেকর্ড সংরক্ষিত হয়েছে!', 'success');
-    }
+  if (!formData.pieces || !formData.kg || !formData.rate) {
+    addToast('সবগুলো ঘর পূরণ করুন!', 'error');
+    return;
+  }
 
-      }
-      setFormData(initialFormState);
-      refresh();
-    } catch (error) {
-      console.error("Failed to save purchase:", error);
-    }
+  // ২. সাবমিশন শুরু (লক করা)
+  setIsSubmitting(true);
+
+  const purchaseData = {
+    type: formData.type,
+    pieces: Number(formData.pieces),
+    kg: Number(formData.kg),
+    rate: Number(formData.rate),
+    total: total,
+    date: formData.date,
+    is_credit: formData.isCredit,
+    created_at: new Date().toISOString()
   };
+
+  try {
+    if (editingId) {
+      await DataService.updatePurchase(purchaseData, editingId);
+      setEditingId(null);
+      addToast('সংশোধন হয়েছে!', 'success');
+    } else {
+      // সরাসরি কল করুন
+      await DataService.addPurchase(purchaseData);
+      
+      if (!formData.isCredit) {
+        await DataService.addCashLog({
+          type: 'WITHDRAW',
+          amount: total,
+          date: formData.date,
+          note: `মাল ক্রয়: ${formData.type}`
+        });
+        addToast('ক্রয় রেকর্ড সংরক্ষিত এবং ক্যাশ থেকে বিয়োগ হয়েছে!', 'success');
+      } else {
+        addToast('বাকিতে ক্রয় রেকর্ড সংরক্ষিত হয়েছে!', 'success');
+      }
+    }
+    setFormData(initialFormState);
+    refresh();
+  } catch (error) {
+    console.error("Failed to save purchase:", error);
+    addToast('সেভ করতে সমস্যা হয়েছে!', 'error');
+  } finally {
+    // ৩. ৫ সেকেন্ড পর বাটন আবার সচল হবে
+    setTimeout(() => {
+      setIsSubmitting(false);
+    }, 5000);
+  }
+};
 
   const filteredPurchases = useMemo(() => {
   // প্রথমে তারিখ অনুযায়ী ফিল্টার করা হচ্ছে
@@ -186,9 +197,14 @@ const PurchaseModule: React.FC<PurchaseModuleProps> = ({ purchases, refresh }) =
             <span className="text-xl font-black text-gray-800">মোট: <span className="text-green-700 ml-2 font-black text-3xl">৳ {total.toLocaleString('bn-BD')}</span></span>
           </div>
           <div className="md:col-span-full flex flex-col md:flex-row gap-4">
-            <button type="submit" className={`flex-1 text-white py-5 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all ${editingId ? 'bg-orange-600' : 'bg-green-600'}`}>
-              {editingId ? 'আপডেট সম্পন্ন করুন' : 'ক্রয় রেকর্ড জমা দিন'}
-            </button>
+           <button 
+  type="submit" 
+  disabled={isSubmitting} // সাবমিট হওয়ার সময় বাটন লক থাকবে
+  className={`flex-1 text-white py-5 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all 
+    ${isSubmitting ? 'bg-gray-400 cursor-not-allowed opacity-70' : (editingId ? 'bg-orange-600' : 'bg-green-600')}`}
+>
+  {isSubmitting ? 'অপেক্ষা করুন...' : (editingId ? 'আপডেট সম্পন্ন করুন' : 'ক্রয় রেকর্ড জমা দিন')}
+</button>
             {editingId && (
               <HoldToDeleteButton
                 onDelete={() => handleDelete(editingId)}
