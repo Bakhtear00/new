@@ -167,14 +167,27 @@ export const DataService = {
     if (error) throw error;
     return data;
   },
-  // Line 170 থেকে রিপ্লেস করুন
-addPurchase: async (p: Omit<Purchase, 'id' | 'created_at'>): Promise<void> => {
+addPurchase: async (p: Omit<Purchase, 'id' | 'created_at'>): Promise<Purchase> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Authentication required.");
-    
-    // এখানে ভুল করে 'dues' ছিল, সেটি 'purchases' হবে
-    const { error } = await supabase.from('purchases').insert([{ ...p, user_id: user.id }]);
-    
+
+    // .select().single() যোগ করা হয়েছে যাতে নতুন ID সহ ডাটা রিটার্ন করে
+    const { data, error } = await supabase
+        .from('purchases')
+        .insert([{ ...p, user_id: user.id }])
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data as Purchase; // এখন এটি আইডি রিটার্ন করবে
+},
+// এই ফাংশনটি DataService অবজেক্টের ভেতরে অবশ্যই যোগ করতে হবে
+deleteCashLogByReference: async (ref: string) => {
+    const { error } = await supabase
+        .from('cash_logs')
+        .delete()
+        .ilike('note', `%${ref}%`); // এটি নোটের ভেতর আইডি খুঁজে ডিলিট করবে
+
     if (error) throw error;
 },
   updatePurchase: async (p: Omit<Purchase, 'id' | 'created_at' | 'user_id'>, id: string) => {
