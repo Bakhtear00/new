@@ -14,6 +14,7 @@ interface SalesModuleProps {
 
 const SalesModule: React.FC<SalesModuleProps> = ({ sales, refresh }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [filterDate, setFilterDate] = useState('');
   const { addToast } = useToast();
   // অংক করার জন্য এই ফাংশনটি যোগ করুন
@@ -37,52 +38,65 @@ const evaluateMath = (input: string): number => {
   
   const [formData, setFormData] = useState(initialFormState);
 
- const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // টেক্সট ইনপুট থেকে অংকের রেজাল্ট বের করা
-    const finalTotal = evaluateMath(formData.total);
-    const finalPieces = evaluateMath(formData.pieces);
+ 
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
 
-    if (finalTotal <= 0) {
-      addToast('মোট বিক্রয়ের টাকার পরিমাণ সঠিকভাবে লিখুন!', 'error');
-      return;
-    }
+  // ১. ডুপ্লিকেট ক্লিক আটকানোর চেক
+  if (isSubmitting) return;
 
-   const saleData = {
-  type: formData.type,
-  pieces: finalPieces,
-  rate: formData.rate ? Number(formData.rate) : 0,
-  mortality: Number(formData.mortality) || 0,
-  total: finalTotal,
-  date: formData.date,
-  created_at: new Date().toISOString() // এখানেও আন্ডারস্কোর (_) ব্যবহার করুন
-};
-    // ... বাকি কোড আগের মতোই থাকবে
+  // টেক্সট ইনপুট থেকে অংকের রেজাল্ট বের করা (আপনার আগের ম্যাথ লজিক)
+  const finalTotal = evaluateMath(formData.total);
+  const finalPieces = evaluateMath(formData.pieces);
 
-    try {
-      if (editingId) {
-        await DataService.updateSale(saleData, editingId);
-        setEditingId(null);
-        addToast('সংশোধন সম্পন্ন!', 'success');
-      } else {
-        const newSale = await DataService.addSale(saleData);
-        if (newSale) {
-            await DataService.addCashLog({
-              type: 'ADD',
-              amount: saleData.total,
-              date: saleData.date,
-              note: `বিক্রয় থেকে আয়: ${saleData.type} [ref:sale:${newSale.id}]`
-            });
-            addToast('হিসাব জমা হয়েছে এবং ক্যাশ বক্সে যোগ হয়েছে!', 'success');
-        }
-      }
-      setFormData(initialFormState);
-      refresh();
-    } catch (error) {
-      console.error("Failed to save sale:", error);
-    }
+  if (finalTotal <= 0) {
+    addToast('মোট বিক্রয়ের টাকার পরিমাণ সঠিকভাবে লিখুন!', 'error');
+    return;
+  }
+
+  // ২. সাবমিশন শুরু (লক করা)
+  setIsSubmitting(true);
+
+  const saleData = {
+    type: formData.type,
+    pieces: finalPieces,
+    rate: formData.rate ? Number(formData.rate) : 0,
+    mortality: Number(formData.mortality) || 0,
+    total: finalTotal,
+    date: formData.date,
+    created_at: new Date().toISOString()
   };
+
+  try {
+    if (editingId) {
+      await DataService.updateSale(saleData, editingId);
+      setEditingId(null);
+      addToast('সংশোধন সম্পন্ন!', 'success');
+    } else {
+      const newSale = await DataService.addSale(saleData);
+      if (newSale) {
+        // ক্যাশ বক্সে অটোমেটিক যোগ হওয়া
+        await DataService.addCashLog({
+          type: 'ADD',
+          amount: saleData.total,
+          date: saleData.date,
+          note: `বিক্রয় থেকে আয়: ${saleData.type} [ref:sale:${newSale.id}]`
+        });
+        addToast('হিসাব জমা হয়েছে এবং ক্যাশ বক্সে যোগ হয়েছে!', 'success');
+      }
+    }
+    setFormData(initialFormState);
+    refresh();
+  } catch (error) {
+    console.error("Failed to save sale:", error);
+    addToast('সেভ করতে সমস্যা হয়েছে', 'error');
+  } finally {
+    // ৩. ৫ সেকেন্ড পর বাটন আবার কাজ করার জন্য খুলে যাবে
+    setTimeout(() => {
+      setIsSubmitting(false);
+    }, 5000);
+  }
+};
 const filteredSales = useMemo(() => {
   let result = filterDate 
     ? sales.filter(s => s.date.split('T')[0] === filterDate) 
@@ -178,9 +192,14 @@ const filteredSales = useMemo(() => {
             <input id="sale-total" type="text"  value={formData.total} onChange={(e) => setFormData({ ...formData, total: e.target.value })} className="w-full px-6 py-7 rounded-3xl bg-green-50/20 border-4 border-green-600 text-green-700 font-black text-5xl outline-none" placeholder="৳ ০" required />
           </div>
           <div className="md:col-span-full flex flex-col md:flex-row gap-4">
-            <button type="submit" className={`flex-1 text-white py-5 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all ${editingId ? 'bg-orange-600' : 'bg-green-600'}`}>
-              {editingId ? 'আপডেট সম্পন্ন করুন' : 'হিসাব জমা দিন'}
-            </button>
+           <button 
+  type="submit" 
+  disabled={isSubmitting} // বাটন লক করবে
+  className={`flex-1 text-white py-5 rounded-2xl font-black text-xl shadow-lg active:scale-95 transition-all 
+    ${isSubmitting ? 'bg-gray-400 cursor-not-allowed opacity-70' : (editingId ? 'bg-orange-600' : 'bg-green-600')}`}
+>
+  {isSubmitting ? 'অপেক্ষা করুন...' : (editingId ? 'আপডেট সম্পন্ন করুন' : 'হিসাব জমা দিন')}
+</button>
             {editingId && (
               <HoldToDeleteButton
                 onDelete={() => handleDelete(editingId)}
